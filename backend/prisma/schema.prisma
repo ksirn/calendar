@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id             String   @id @default(uuid())
+  telegramId     String   @unique
+  name           String
+  preferredColor String?
+  createdAt      DateTime @default(now())
+}
+
+model Connection {
+  id                String   @id @default(uuid())
+  userAId           String
+  userBId           String
+  requestedByUserId String
+  status            String
+  visibilityForA    String   @default("full")
+  visibilityForB    String   @default("full")
+  createdAt         DateTime @default(now())
+  respondedAt       DateTime?
+
+  @@unique([userAId, userBId])
+}
+
+model Event {
+  id            String   @id @default(uuid())
+  creatorId     String
+  ownerUserId   String
+  title         String
+  emoji         String?
+  description   String?
+  startAt       DateTime
+  endAt         DateTime
+  blockType     String
+  status        String
+  source        String
+  parentEventId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Invite {
+  id             String   @id @default(uuid())
+  eventId        String
+  invitedUserId  String
+  inviterUserId  String
+  responseStatus String
+  conflictType   String
+  createdAt      DateTime @default(now())
+  respondedAt    DateTime?
+}
+
+model RescheduleItem {
+  id              String   @id @default(uuid())
+  userId          String
+  eventId         String
+  originalStartAt DateTime
+  originalEndAt   DateTime
+  status          String
+  createdAt       DateTime @default(now())
+}
