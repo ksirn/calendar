@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CalendarColumnUser, EventItem } from '../types';
 
 type Props = {
@@ -13,6 +13,7 @@ type Props = {
 
 const HOUR_HEIGHT = 64;
 const TOTAL_HEIGHT = 24 * HOUR_HEIGHT;
+const COLUMN_MIN_WIDTH = 180;
 
 function toLocalDateKey(dateString: string) {
   const date = new Date(dateString);
@@ -76,10 +77,16 @@ export function TimeGridCalendar({
   onEventClick,
   getUserColor,
 }: Props) {
-  const [nowTick, setNowTick] = useState(Date.now());
+  const [, setNowMarker] = useState(0);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomScrollRef = useRef<HTMLDivElement | null>(null);
+  const syncLockRef = useRef<'top' | 'bottom' | null>(null);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNowTick(Date.now()), 60_000);
+    const timer = window.setInterval(() => {
+      setNowMarker((v) => v + 1);
+    }, 60_000);
+
     return () => window.clearInterval(timer);
   }, []);
 
@@ -105,165 +112,201 @@ export function TimeGridCalendar({
       event.status !== 'cancelled'
   );
 
-  return (
-    <div className="calendar-shell">
-      <div
-        className="calendar-header-grid"
-        style={{
-          gridTemplateColumns: `72px repeat(${columns.length || 1}, minmax(180px, 1fr))`,
-        }}
-      >
-        <div className="calendar-header-cell">Время</div>
+  const gridTemplateColumns = `72px repeat(${columns.length || 1}, minmax(${COLUMN_MIN_WIDTH}px, 1fr))`;
+  const minWidth = 72 + Math.max(columns.length, 1) * COLUMN_MIN_WIDTH;
 
-        {columns.map((column) => (
-          <div key={column.key} className="calendar-header-cell">
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
-              {formatHeaderDate(column.date)}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: column.color,
-                  display: 'inline-block',
-                }}
-              />
-              {column.user.name}
-            </div>
-          </div>
-        ))}
+  const syncFromTop = () => {
+    if (!topScrollRef.current || !bottomScrollRef.current) return;
+    if (syncLockRef.current === 'bottom') return;
+
+    syncLockRef.current = 'top';
+    bottomScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => {
+      syncLockRef.current = null;
+    });
+  };
+
+  const syncFromBottom = () => {
+    if (!topScrollRef.current || !bottomScrollRef.current) return;
+    if (syncLockRef.current === 'top') return;
+
+    syncLockRef.current = 'bottom';
+    topScrollRef.current.scrollLeft = bottomScrollRef.current.scrollLeft;
+    requestAnimationFrame(() => {
+      syncLockRef.current = null;
+    });
+  };
+
+  return (
+    <div>
+      <div className="calendar-top-scroll" ref={topScrollRef} onScroll={syncFromTop}>
+        <div style={{ width: minWidth, height: 1 }} />
       </div>
 
-      <div
-        className="calendar-body-grid"
-        style={{
-          gridTemplateColumns: `72px repeat(${columns.length || 1}, minmax(180px, 1fr))`,
-        }}
-      >
-        <div className="calendar-time-column" style={{ height: TOTAL_HEIGHT }}>
-          {hours.map((hour) => (
+      <div className="calendar-scroll" ref={bottomScrollRef} onScroll={syncFromBottom}>
+        <div className="calendar-inner" style={{ minWidth }}>
+          <div className="calendar-shell">
             <div
-              key={hour}
+              className="calendar-header-grid"
               style={{
-                position: 'absolute',
-                top: hour * HOUR_HEIGHT - 10,
-                left: 8,
-                fontSize: 12,
-                color: 'var(--muted)',
+                gridTemplateColumns,
               }}
             >
-              {String(hour).padStart(2, '0')}:00
-            </div>
-          ))}
-        </div>
+              <div className="calendar-header-cell">Время</div>
 
-        {columns.map((column) => {
-          const userEvents = filteredEvents.filter(
-            (event) =>
-              event.ownerUserId === column.user.id &&
-              toLocalDateKey(event.startAt) === column.date
-          );
-
-          return (
-            <div
-              key={column.key}
-              className="calendar-user-column"
-              style={{ height: TOTAL_HEIGHT }}
-              onClick={(e) => {
-                if (e.target !== e.currentTarget) return;
-
-                const rect = e.currentTarget.getBoundingClientRect();
-                const y = e.clientY - rect.top;
-                const totalMinutes = Math.floor((y / HOUR_HEIGHT) * 60);
-                const roundedMinutes = Math.floor(totalMinutes / 30) * 30;
-                const hh = Math.floor(roundedMinutes / 60);
-                const mm = roundedMinutes % 60;
-
-                onEmptySlotClick({
-                  ownerUserId: column.user.id,
-                  startAt: getDateTimeLocal(column.date, hh, mm),
-                  endAt: getDateTimeLocal(column.date, hh + 1, mm),
-                });
-              }}
-            >
-              {hours.map((hour) => (
-                <div
-                  key={hour}
-                  className="calendar-hour-line"
-                  style={{ top: hour * HOUR_HEIGHT }}
-                />
+              {columns.map((column) => (
+                <div key={column.key} className="calendar-header-cell">
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+                    {formatHeaderDate(column.date)}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        background: column.color,
+                        display: 'inline-block',
+                      }}
+                    />
+                    {column.user.name}
+                  </div>
+                </div>
               ))}
+            </div>
 
-              {getCurrentTimeLineTop(column.date) !== null && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    top: getCurrentTimeLineTop(column.date)!,
-                    height: 2,
-                    background: '#ff4d4f',
-                    zIndex: 6,
-                    pointerEvents: 'none',
-                  }}
-                >
+            <div
+              className="calendar-body-grid"
+              style={{
+                gridTemplateColumns,
+              }}
+            >
+              <div className="calendar-time-column" style={{ height: TOTAL_HEIGHT }}>
+                {hours.map((hour) => (
                   <div
+                    key={hour}
                     style={{
                       position: 'absolute',
-                      left: -4,
-                      top: -4,
-                      width: 10,
-                      height: 10,
-                      borderRadius: '50%',
-                      background: '#ff4d4f',
+                      top: hour * HOUR_HEIGHT - 10,
+                      left: 8,
+                      fontSize: 12,
+                      color: 'var(--muted)',
                     }}
-                  />
-                </div>
-              )}
+                  >
+                    {String(hour).padStart(2, '0')}:00
+                  </div>
+                ))}
+              </div>
 
-              {userEvents.map((event) => {
-                const style = getEventStyle(event);
-                const isOwner = event.ownerUserId === currentUserId;
-                const isSoft = event.blockType === 'soft';
+              {columns.map((column) => {
+                const userEvents = filteredEvents.filter(
+                  (event) =>
+                    event.ownerUserId === column.user.id &&
+                    toLocalDateKey(event.startAt) === column.date
+                );
+
+                const currentLineTop = getCurrentTimeLineTop(column.date);
 
                 return (
                   <div
-                    key={event.id}
-                    className={`calendar-event-block ${isOwner ? 'editable' : ''}`}
-                    style={{
-                      left: 8,
-                      right: 8,
-                      top: style.top,
-                      height: style.height,
-                      border: `1px solid ${column.color}`,
-                      background: isSoft
-                        ? `repeating-linear-gradient(135deg, color-mix(in srgb, ${column.color} 22%, transparent), color-mix(in srgb, ${column.color} 22%, transparent) 8px, color-mix(in srgb, ${column.color} 10%, transparent) 8px, color-mix(in srgb, ${column.color} 10%, transparent) 16px)`
-                        : `color-mix(in srgb, ${column.color} 18%, var(--panel))`,
-                    }}
+                    key={column.key}
+                    className="calendar-user-column"
+                    style={{ height: TOTAL_HEIGHT }}
                     onClick={(e) => {
-                      e.stopPropagation();
-                      if (isOwner) onEventClick(event);
+                      if (e.target !== e.currentTarget) return;
+
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const y = e.clientY - rect.top;
+                      const totalMinutes = Math.floor((y / HOUR_HEIGHT) * 60);
+                      const roundedMinutes = Math.floor(totalMinutes / 30) * 30;
+                      const hh = Math.floor(roundedMinutes / 60);
+                      const mm = roundedMinutes % 60;
+
+                      onEmptySlotClick({
+                        ownerUserId: column.user.id,
+                        startAt: getDateTimeLocal(column.date, hh, mm),
+                        endAt: getDateTimeLocal(column.date, hh + 1, mm),
+                      });
                     }}
-                    title={`${event.title} (${formatTime(event.startAt)}–${formatTime(event.endAt)})`}
                   >
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>
-                      {event.emoji ? `${event.emoji} ` : ''}
-                      {event.title}
-                    </div>
-                    <div style={{ fontSize: 12, marginTop: 4 }}>
-                      {formatTime(event.startAt)}–{formatTime(event.endAt)}
-                    </div>
-                    <div style={{ fontSize: 11, marginTop: 4 }}>
-                      {event.blockType === 'hard' ? 'Занят' : 'Могу перенести'}
-                    </div>
+                    {hours.map((hour) => (
+                      <div
+                        key={hour}
+                        className="calendar-hour-line"
+                        style={{ top: hour * HOUR_HEIGHT }}
+                      />
+                    ))}
+
+                    {currentLineTop !== null && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          top: currentLineTop,
+                          height: 2,
+                          background: '#ff4d4f',
+                          zIndex: 6,
+                          pointerEvents: 'none',
+                        }}
+                      >
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: -4,
+                            top: -4,
+                            width: 10,
+                            height: 10,
+                            borderRadius: '50%',
+                            background: '#ff4d4f',
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    {userEvents.map((event) => {
+                      const style = getEventStyle(event);
+                      const isOwner = event.ownerUserId === currentUserId;
+                      const isSoft = event.blockType === 'soft';
+
+                      return (
+                        <div
+                          key={event.id}
+                          className={`calendar-event-block ${isOwner ? 'editable' : ''}`}
+                          style={{
+                            left: 8,
+                            right: 8,
+                            top: style.top,
+                            height: style.height,
+                            border: `1px solid ${column.color}`,
+                            background: isSoft
+                              ? `repeating-linear-gradient(135deg, color-mix(in srgb, ${column.color} 22%, transparent), color-mix(in srgb, ${column.color} 22%, transparent) 8px, color-mix(in srgb, ${column.color} 10%, transparent) 8px, color-mix(in srgb, ${column.color} 10%, transparent) 16px)`
+                              : `color-mix(in srgb, ${column.color} 18%, var(--panel))`,
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isOwner) onEventClick(event);
+                          }}
+                          title={`${event.title} (${formatTime(event.startAt)}–${formatTime(
+                            event.endAt
+                          )})`}
+                        >
+                          <div style={{ fontWeight: 700, fontSize: 13 }}>{event.title}</div>
+                          <div style={{ fontSize: 12, marginTop: 4 }}>
+                            {formatTime(event.startAt)}–{formatTime(event.endAt)}
+                          </div>
+                          <div style={{ fontSize: 11, marginTop: 4 }}>
+                            {event.blockType === 'hard' ? 'Занят' : 'Могу перенести'}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               })}
             </div>
-          );
-        })}
+          </div>
+        </div>
       </div>
     </div>
   );

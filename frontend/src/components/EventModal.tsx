@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MultiDatePicker } from './MultiDatePicker';
+
+type RepeatMode = 'none' | 'daily' | 'weekly' | 'monthly';
 
 type Props = {
   open: boolean;
@@ -12,6 +14,8 @@ type Props = {
   acceptedUsers: { id: string; name: string }[];
   duplicateDates: string[];
   selectedDate: string;
+  repeatMode: RepeatMode;
+  repeatUntil: string;
   error: string;
   onClose: () => void;
   onChangeTitle: (value: string) => void;
@@ -20,6 +24,8 @@ type Props = {
   onChangeBlockType: (value: 'hard' | 'soft') => void;
   onOpenParticipants: () => void;
   onToggleDuplicateDate: (date: string) => void;
+  onChangeRepeatMode: (value: RepeatMode) => void;
+  onChangeRepeatUntil: (value: string) => void;
   onSubmit: () => void;
   onDelete?: () => void;
 };
@@ -35,6 +41,8 @@ export function EventModal({
   acceptedUsers,
   duplicateDates,
   selectedDate,
+  repeatMode,
+  repeatUntil,
   error,
   onClose,
   onChangeTitle,
@@ -43,10 +51,18 @@ export function EventModal({
   onChangeBlockType,
   onOpenParticipants,
   onToggleDuplicateDate,
+  onChangeRepeatMode,
+  onChangeRepeatUntil,
   onSubmit,
   onDelete,
 }: Props) {
   const [calendarOpen, setCalendarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setCalendarOpen(false);
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -72,14 +88,14 @@ export function EventModal({
           <label>
             Название:
             <input
-              placeholder="Например: 🏐 Волейбол"
+              placeholder="Например: Работа"
               value={title}
               onChange={(e) => onChangeTitle(e.target.value)}
             />
           </label>
 
           <div style={{ color: 'var(--muted)', fontSize: 13 }}>
-            Можно вставлять emoji прямо в название. Например: 🏐 Волейбол, 💼 Смена, 😴 Сон
+            Можно вставлять emoji прямо в название. Например: 💼 Смена, 😴 Сон
           </div>
 
           <label>
@@ -145,6 +161,42 @@ export function EventModal({
                     />
                   </div>
                 )}
+              </div>
+
+              <div className="expandable-block">
+                <div style={{ display: 'grid', gap: 8 }}>
+                  <label>
+                    Серия:
+                    <select
+                      value={repeatMode}
+                      onChange={(e) =>
+                        onChangeRepeatMode(e.target.value as 'none' | 'daily' | 'weekly' | 'monthly')
+                      }
+                    >
+                      <option value="none">Не повторять</option>
+                      <option value="daily">Каждый день</option>
+                      <option value="weekly">Каждую неделю</option>
+                      <option value="monthly">Каждый месяц</option>
+                    </select>
+                  </label>
+
+                  {repeatMode !== 'none' && (
+                    <>
+                      <label>
+                        До даты:
+                        <input
+                          type="date"
+                          value={repeatUntil}
+                          onChange={(e) => onChangeRepeatUntil(e.target.value)}
+                        />
+                      </label>
+
+                      <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                        Серия создаст обычные отдельные события до выбранной даты.
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </>
           )}

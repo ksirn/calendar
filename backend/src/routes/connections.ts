@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { normalizeUsername } from '../lib/auth';
 
 const router = Router();
 
@@ -9,25 +10,23 @@ function normalizePair(user1Id: string, user2Id: string) {
     : { userAId: user2Id, userBId: user1Id };
 }
 
-function getMyVisibilityForConnection(connection: {
-  userAId: string;
-  userBId: string;
-  visibilityForA: string;
-  visibilityForB: string;
-}, userId: string) {
+function getMyVisibilityForConnection(
+  connection: {
+    userAId: string;
+    userBId: string;
+    visibilityForA: string;
+    visibilityForB: string;
+  },
+  userId: string
+) {
   return connection.userAId === userId
     ? connection.visibilityForA
     : connection.visibilityForB;
 }
 
-// GET /connections?userId=...
 router.get('/', async (req, res) => {
   try {
-    const userId = String(req.query.userId || '').trim();
-
-    if (!userId) {
-      return res.status(400).json({ error: 'userId is required' });
-    }
+    const userId = String((req as any).user.id);
 
     const connections = await prisma.connection.findMany({
       where: {
@@ -43,6 +42,12 @@ router.get('/', async (req, res) => {
     const users = await prisma.user.findMany({
       where: {
         id: { in: userIds },
+      },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        preferredColor: true,
       },
     });
 
@@ -68,8 +73,8 @@ router.get('/', async (req, res) => {
         otherUser: otherUser
           ? {
               id: otherUser.id,
+              username: otherUser.username,
               name: otherUser.name,
-              telegramId: otherUser.telegramId,
               preferredColor: otherUser.preferredColor,
             }
           : null,
@@ -101,17 +106,70 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /connections/request
+router.get('/search', async (req, res) => {
+  try {
+    const userId = String((req as any).user.id);
+    const q = normalizeUsername(String(req.query.q ?? ''));
+
+    const connections = await prisma.connection.findMany({
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }],
+      },
+      select: {
+        userAId: true,
+        userBId: true,
+      },
+    });
+
+    const excludedIds = new Set<string>([userId]);
+    for (const connection of connections) {
+      excludedIds.add(connection.userAId);
+      excludedIds.add(connection.userBId);
+    }
+
+    const whereClause = q
+      ? {
+          username: {
+            contains: q,
+            mode: 'insensitive' as const,
+          },
+        }
+      : {};
+
+    const users = await prisma.user.findMany({
+      where: {
+        id: {
+          notIn: Array.from(excludedIds),
+        },
+        ...whereClause,
+      },
+      orderBy: {
+        username: 'asc',
+      },
+      take: 20,
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        preferredColor: true,
+      },
+    });
+
+    return res.json(users);
+  } catch (error) {
+    console.error('GET /connections/search error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/request', async (req, res) => {
   try {
-    const body = req.body ?? {};
+    const requesterUserId = String((req as any).user.id);
+    const targetUserId = String(req.body?.targetUserId ?? '').trim();
 
-    const requesterUserId = String(body.requesterUserId ?? '').trim();
-    const targetUserId = String(body.targetUserId ?? '').trim();
-
-    if (!requesterUserId || !targetUserId) {
+    if (!targetUserId) {
       return res.status(400).json({
-        error: 'requesterUserId and targetUserId are required',
+        error: 'targetUserId is required',
       });
     }
 
@@ -167,15 +225,13 @@ router.post('/request', async (req, res) => {
   }
 });
 
-// POST /connections/:id/accept
 router.post('/:id/accept', async (req, res) => {
   try {
     const connectionId = String(req.params.id || '').trim();
-    const body = req.body ?? {};
-    const userId = String(body.userId ?? '').trim();
+    const userId = String((req as any).user.id);
 
-    if (!connectionId || !userId) {
-      return res.status(400).json({ error: 'connectionId and userId are required' });
+    if (!connectionId) {
+      return res.status(400).json({ error: 'connectionId is required' });
     }
 
     const connection = await prisma.connection.findUnique({
@@ -218,15 +274,13 @@ router.post('/:id/accept', async (req, res) => {
   }
 });
 
-// POST /connections/:id/decline
 router.post('/:id/decline', async (req, res) => {
   try {
     const connectionId = String(req.params.id || '').trim();
-    const body = req.body ?? {};
-    const userId = String(body.userId ?? '').trim();
+    const userId = String((req as any).user.id);
 
-    if (!connectionId || !userId) {
-      return res.status(400).json({ error: 'connectionId and userId are required' });
+    if (!connectionId) {
+      return res.status(400).json({ error: 'connectionId is required' });
     }
 
     const connection = await prisma.connection.findUnique({
@@ -263,17 +317,14 @@ router.post('/:id/decline', async (req, res) => {
   }
 });
 
-// PATCH /connections/:id/privacy
 router.patch('/:id/privacy', async (req, res) => {
   try {
     const connectionId = String(req.params.id || '').trim();
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    const userId = String((req as any).user.id);
+    const visibility = String(req.body?.visibility ?? '').trim();
 
-    const userId = String(body.userId ?? '').trim();
-    const visibility = String(body.visibility ?? '').trim();
-
-    if (!connectionId || !userId || !visibility) {
-      return res.status(400).json({ error: 'connectionId, userId and visibility are required' });
+    if (!connectionId || !visibility) {
+      return res.status(400).json({ error: 'connectionId and visibility are required' });
     }
 
     if (visibility !== 'full' && visibility !== 'busy_only') {
@@ -310,14 +361,13 @@ router.patch('/:id/privacy', async (req, res) => {
   }
 });
 
-// DELETE /connections/:id?userId=...
 router.delete('/:id', async (req, res) => {
   try {
     const connectionId = String(req.params.id || '').trim();
-    const userId = String(req.query.userId || '').trim();
+    const userId = String((req as any).user.id);
 
-    if (!connectionId || !userId) {
-      return res.status(400).json({ error: 'connectionId and userId are required' });
+    if (!connectionId) {
+      return res.status(400).json({ error: 'connectionId is required' });
     }
 
     const connection = await prisma.connection.findUnique({

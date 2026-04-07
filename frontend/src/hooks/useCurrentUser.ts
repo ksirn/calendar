@@ -3,13 +3,12 @@ import { api } from '../api/client';
 import { subscribeDataChanged } from '../lib/dataEvents';
 import type { User } from '../types';
 
-const STORAGE_KEY = 'calendar-mvp-current-user-id';
-
 export function useCurrentUser() {
   const [users, setUsers] = useState<User[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -17,24 +16,22 @@ export function useCurrentUser() {
         setLoading(true);
         setError('');
 
-        const data = (await api.getUsers()) as User[];
-        setUsers(data);
+        const me = (await api.me()) as User | null;
 
-        if (!data.length) {
-          setError('Сервер вернул пустой список пользователей');
+        if (!me) {
+          setIsAuthenticated(false);
+          setUsers([]);
+          setCurrentUserId('');
           return;
         }
 
-        const saved = localStorage.getItem(STORAGE_KEY);
+        setIsAuthenticated(true);
+        setCurrentUserId(me.id);
 
-        if (saved && data.some((u) => u.id === saved)) {
-          setCurrentUserId(saved);
-        } else {
-          setCurrentUserId(data[0].id);
-          localStorage.setItem(STORAGE_KEY, data[0].id);
-        }
+        const allUsers = (await api.getUsers()) as User[];
+        setUsers(allUsers);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Не удалось загрузить пользователей');
+        setError(err instanceof Error ? err.message : 'Не удалось загрузить пользователя');
       } finally {
         setLoading(false);
       }
@@ -45,19 +42,15 @@ export function useCurrentUser() {
     return unsub;
   }, []);
 
-  const setUser = (userId: string) => {
-    setCurrentUserId(userId);
-    localStorage.setItem(STORAGE_KEY, userId);
-  };
-
   const currentUser = users.find((u) => u.id === currentUserId) ?? null;
 
   return {
     users,
     currentUser,
     currentUserId,
-    setUser,
+    setUser: () => {},
     loading,
     error,
+    isAuthenticated,
   };
 }

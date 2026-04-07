@@ -1,41 +1,53 @@
 import { Link, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import type { User } from '../types';
+import { api } from '../api/client';
 
 type Props = {
   children: ReactNode;
-  users: User[];
-  currentUserId: string;
-  onChangeUser: (userId: string) => void;
+  currentUserName: string;
+  currentUsername: string;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   invitesCount: number;
   rescheduleCount: number;
+  peopleCount: number;
 };
 
-const navItems = [
+type NavItem = {
+  to: string;
+  label: string;
+  badgeKey?: 'invites' | 'reschedule' | 'people';
+};
+
+const navItems: NavItem[] = [
   { to: '/', label: 'Календарь' },
   { to: '/invites', label: 'Приглашения', badgeKey: 'invites' },
   { to: '/reschedule', label: 'Перенести', badgeKey: 'reschedule' },
-  { to: '/people', label: 'Люди' },
-] as const;
+  { to: '/people', label: 'Люди', badgeKey: 'people' },
+];
 
 export function Layout({
   children,
-  users,
-  currentUserId,
-  onChangeUser,
+  currentUserName,
+  currentUsername,
   theme,
   onToggleTheme,
   invitesCount,
   rescheduleCount,
+  peopleCount,
 }: Props) {
   const location = useLocation();
 
-  const getBadgeValue = (badgeKey?: string) => {
+  const getBadgeValue = (badgeKey?: 'invites' | 'reschedule' | 'people') => {
     if (badgeKey === 'invites') return invitesCount;
     if (badgeKey === 'reschedule') return rescheduleCount;
+    if (badgeKey === 'people') return peopleCount;
     return 0;
+  };
+
+  const logout = async () => {
+    await api.logout();
+    window.location.reload();
   };
 
   return (
@@ -51,23 +63,18 @@ export function Layout({
           }}
         >
           <div>
-            <h1 style={{ margin: '0 0 12px' }}>Calendar MVP</h1>
-
-            <label>
-              Текущий пользователь:{' '}
-              <select value={currentUserId} onChange={(e) => onChangeUser(e.target.value)}>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <h1 style={{ margin: '0 0 12px' }}>Календарь</h1>
+            <div style={{ color: 'var(--muted)', fontSize: 14 }}>
+              Вы вошли как: <strong>{currentUserName}</strong> @{currentUsername}
+            </div>
           </div>
 
-          <button onClick={onToggleTheme}>
-            Тема: {theme === 'dark' ? 'Темная' : 'Светлая'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={onToggleTheme}>
+              Тема: {theme === 'dark' ? 'Темная' : 'Светлая'}
+            </button>
+            <button onClick={logout}>Выйти</button>
+          </div>
         </div>
       </header>
 

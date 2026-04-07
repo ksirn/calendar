@@ -1,7 +1,8 @@
-const API_BASE = 'http://localhost:3000';
+const API_BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(options?.headers ?? {}),
@@ -19,47 +20,77 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  register: (payload: { username: string; name: string; password: string }) =>
+    request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  login: (payload: { username: string; password: string }) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  logout: () =>
+    request('/auth/logout', {
+      method: 'POST',
+    }),
+
+  me: () => request('/auth/me'),
+
+  updateProfile: (payload: { username: string; name: string }) =>
+    request('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  changePassword: (payload: { currentPassword: string; newPassword: string }) =>
+    request('/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
   getUsers: () => request('/users'),
 
-  updateUserColor: (userId: string, preferredColor: string) =>
-    request(`/users/${userId}/color`, {
+  updateMyColor: (preferredColor: string) =>
+    request('/users/me/color', {
       method: 'PATCH',
       body: JSON.stringify({ preferredColor }),
     }),
 
-  getConnections: (userId: string) =>
-    request(`/connections?userId=${encodeURIComponent(userId)}`),
+  getConnections: () => request('/connections'),
 
-  createConnectionRequest: (requesterUserId: string, targetUserId: string) =>
+  searchConnectionCandidates: (q: string) =>
+    request(`/connections/search?q=${encodeURIComponent(q)}`),
+
+  createConnectionRequest: (targetUserId: string) =>
     request('/connections/request', {
       method: 'POST',
-      body: JSON.stringify({ requesterUserId, targetUserId }),
+      body: JSON.stringify({ targetUserId }),
     }),
 
-  acceptConnection: (connectionId: string, userId: string) =>
+  acceptConnection: (connectionId: string) =>
     request(`/connections/${connectionId}/accept`, {
       method: 'POST',
-      body: JSON.stringify({ userId }),
     }),
 
-  declineConnection: (connectionId: string, userId: string) =>
+  declineConnection: (connectionId: string) =>
     request(`/connections/${connectionId}/decline`, {
       method: 'POST',
-      body: JSON.stringify({ userId }),
     }),
 
   updateConnectionPrivacy: (
     connectionId: string,
-    userId: string,
     visibility: 'full' | 'busy_only'
   ) =>
     request(`/connections/${connectionId}/privacy`, {
       method: 'PATCH',
-      body: JSON.stringify({ userId, visibility }),
+      body: JSON.stringify({ visibility }),
     }),
 
-  deleteConnection: (connectionId: string, userId: string) =>
-    request(`/connections/${connectionId}?userId=${encodeURIComponent(userId)}`, {
+  deleteConnection: (connectionId: string) =>
+    request(`/connections/${connectionId}`, {
       method: 'DELETE',
     }),
 

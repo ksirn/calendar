@@ -3,27 +3,38 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id             String   @id @default(uuid())
-  telegramId     String   @unique
+  id             String    @id @default(uuid())
+  username       String    @unique
   name           String
+  passwordHash   String
   preferredColor String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  sessions       Session[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Connection {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   userAId           String
   userBId           String
   requestedByUserId String
   status            String
-  visibilityForA    String   @default("full")
-  visibilityForB    String   @default("full")
-  createdAt         DateTime @default(now())
+  visibilityForA    String    @default("full")
+  visibilityForB    String    @default("full")
+  createdAt         DateTime  @default(now())
   respondedAt       DateTime?
 
   @@unique([userAId, userBId])
@@ -47,13 +58,13 @@ model Event {
 }
 
 model Invite {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   eventId        String
   invitedUserId  String
   inviterUserId  String
   responseStatus String
   conflictType   String
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
   respondedAt    DateTime?
 }
 

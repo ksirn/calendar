@@ -1,6 +1,6 @@
 export type User = {
   id: string;
-  telegramId: string;
+  username: string;
   name: string;
   preferredColor: string | null;
   createdAt: string;
@@ -15,8 +15,8 @@ export type ConnectionItem = {
   respondedAt: string | null;
   otherUser: {
     id: string;
+    username: string;
     name: string;
-    telegramId: string;
     preferredColor?: string | null;
   } | null;
 };

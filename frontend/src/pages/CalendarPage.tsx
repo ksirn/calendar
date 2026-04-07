@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { TimeGridCalendar } from '../components/TimeGridCalendar';
 import { MonthCalendar } from '../components/MonthCalendar';
@@ -16,6 +16,11 @@ type Props = {
 
 type ViewMode = 'day' | '3days' | 'week' | 'month';
 type FormMode = 'create' | 'edit';
+type RepeatMode = 'none' | 'daily' | 'weekly' | 'monthly';
+
+const STORAGE_DATE_KEY = 'calendar-selected-date';
+const STORAGE_VIEW_KEY = 'calendar-view-mode';
+const FILTER_KEY_PREFIX = 'calendar-selected-users:';
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -39,6 +44,18 @@ function addDays(dateString: string, delta: number) {
   return toDateInputValue(date);
 }
 
+function addDaysToLocalDateTime(dateTimeLocal: string, delta: number) {
+  const date = new Date(dateTimeLocal);
+  date.setDate(date.getDate() + delta);
+  return toDateTimeLocalValue(date);
+}
+
+function addMonthsToLocalDateTime(dateTimeLocal: string, delta: number) {
+  const date = new Date(dateTimeLocal);
+  date.setMonth(date.getMonth() + delta);
+  return toDateTimeLocalValue(date);
+}
+
 function formatSelectedDate(dateString: string) {
   const date = new Date(`${dateString}T12:00:00`);
   return date.toLocaleDateString([], {
@@ -54,11 +71,83 @@ function replaceDatePart(dateTimeLocal: string, newDate: string) {
   return `${newDate}T${timePart}`;
 }
 
+function getStartOfWeek(dateString: string) {
+  const date = new Date(`${dateString}T12:00:00`);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + diff);
+  return toDateInputValue(date);
+}
+
 function getVisibleDates(selectedDate: string, viewMode: ViewMode) {
   if (viewMode === 'day') return [selectedDate];
   if (viewMode === '3days') return [0, 1, 2].map((d) => addDays(selectedDate, d));
-  if (viewMode === 'week') return [0, 1, 2, 3, 4, 5, 6].map((d) => addDays(selectedDate, d));
+  if (viewMode === 'week') {
+    const monday = getStartOfWeek(selectedDate);
+    return [0, 1, 2, 3, 4, 5, 6].map((d) => addDays(monday, d));
+  }
   return [selectedDate];
+}
+
+function dedupeOccurrences(
+  occurrences: Array<{ startAt: string; endAt: string }>
+): Array<{ startAt: string; endAt: string }> {
+  const map = new Map<string, { startAt: string; endAt: string }>();
+
+  for (const item of occurrences) {
+    const key = `${item.startAt}__${item.endAt}`;
+    if (!map.has(key)) {
+      map.set(key, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+function buildRepeatOccurrences(params: {
+  startAtLocal: string;
+  endAtLocal: string;
+  repeatMode: RepeatMode;
+  repeatUntil: string;
+}) {
+  const { startAtLocal, endAtLocal, repeatMode, repeatUntil } = params;
+
+  if (repeatMode === 'none' || !repeatUntil) {
+    return [];
+  }
+
+  const result: Array<{ startAt: string; endAt: string }> = [];
+  const untilDate = repeatUntil;
+  const maxItems = 100;
+
+  let currentStart = startAtLocal;
+  let currentEnd = endAtLocal;
+
+  while (result.length < maxItems) {
+    if (repeatMode === 'daily') {
+      currentStart = addDaysToLocalDateTime(currentStart, 1);
+      currentEnd = addDaysToLocalDateTime(currentEnd, 1);
+    } else if (repeatMode === 'weekly') {
+      currentStart = addDaysToLocalDateTime(currentStart, 7);
+      currentEnd = addDaysToLocalDateTime(currentEnd, 7);
+    } else if (repeatMode === 'monthly') {
+      currentStart = addMonthsToLocalDateTime(currentStart, 1);
+      currentEnd = addMonthsToLocalDateTime(currentEnd, 1);
+    }
+
+    const currentDate = currentStart.slice(0, 10);
+
+    if (currentDate > untilDate) {
+      break;
+    }
+
+    result.push({
+      startAt: new Date(currentStart).toISOString(),
+      endAt: new Date(currentEnd).toISOString(),
+    });
+  }
+
+  return result;
 }
 
 export function CalendarPage({ currentUserId, users }: Props) {
@@ -66,11 +155,29 @@ export function CalendarPage({ currentUserId, users }: Props) {
   const { getColor } = useUserColors(users);
   const { showToast } = useToast();
 
+  const filterStorageKey = `${FILTER_KEY_PREFIX}${currentUserId}`;
+
   const [events, setEvents] = useState<EventItem[]>([]);
   const [connections, setConnections] = useState<ConnectionItem[]>([]);
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(today);
-  const [viewMode, setViewMode] = useState<ViewMode>('day');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`${FILTER_KEY_PREFIX}${currentUserId}`);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    return localStorage.getItem(STORAGE_DATE_KEY) || today;
+  });
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem(STORAGE_VIEW_KEY);
+    if (saved === 'day' || saved === '3days' || saved === 'week' || saved === 'month') {
+      return saved;
+    }
+    return 'day';
+  });
+
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
 
@@ -92,11 +199,33 @@ export function CalendarPage({ currentUserId, users }: Props) {
   const [blockType, setBlockType] = useState<'hard' | 'soft'>('hard');
   const [participants, setParticipants] = useState<string[]>([]);
   const [duplicateDates, setDuplicateDates] = useState<string[]>([]);
+  const [repeatMode, setRepeatMode] = useState<RepeatMode>('none');
+  const [repeatUntil, setRepeatUntil] = useState('');
+
+  const isFirstLoadRef = useRef(true);
 
   const visibleDates = useMemo(() => getVisibleDates(selectedDate, viewMode), [selectedDate, viewMode]);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_DATE_KEY, selectedDate);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_VIEW_KEY, viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(filterStorageKey, JSON.stringify(selectedUserIds));
+    } catch {
+      // ignore
+    }
+  }, [filterStorageKey, selectedUserIds]);
+
   const loadConnections = async () => {
-    const data = (await api.getConnections(currentUserId)) as { accepted: ConnectionItem[] };
+    const data = (await api.getConnections()) as {
+      accepted: ConnectionItem[];
+    };
     setConnections(data.accepted);
   };
 
@@ -107,32 +236,68 @@ export function CalendarPage({ currentUserId, users }: Props) {
   };
 
   const load = async () => {
+
     try {
-      setLoading(true);
+      if (isFirstLoadRef.current) {
+        setLoading(true);
+      }
+
       setPageError('');
       await loadConnections();
       await loadEvents(selectedUserIds);
     } catch (err) {
       setPageError(err instanceof Error ? err.message : 'Ошибка загрузки');
     } finally {
-      setLoading(false);
+      if (isFirstLoadRef.current) {
+        setLoading(false);
+        isFirstLoadRef.current = false;
+      }
     }
   };
 
   useEffect(() => {
-    setSelectedUserIds([]);
-  }, [currentUserId]);
+    try {
+      const raw = localStorage.getItem(filterStorageKey);
+      setSelectedUserIds(raw ? JSON.parse(raw) : []);
+    } catch {
+      setSelectedUserIds([]);
+    }
+  }, [filterStorageKey]);
 
   useEffect(() => {
     load();
-    const unsub = subscribeDataChanged(load);
+    const unsub = subscribeDataChanged(() => load());
     return unsub;
+  }, [currentUserId, selectedUserIds]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      load();
+    }, 10000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        load();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [currentUserId, selectedUserIds]);
 
   const acceptedUsers = useMemo(
     () => connections.map((c) => c.otherUser).filter(Boolean),
     [connections]
   );
+
+  useEffect(() => {
+    const allowedIds = new Set(acceptedUsers.map((u) => u!.id));
+    setSelectedUserIds((prev) => prev.filter((id) => allowedIds.has(id)));
+  }, [acceptedUsers]);
 
   const acceptedUserSimple = useMemo(
     () => acceptedUsers.map((u) => ({ id: u!.id, name: u!.name })),
@@ -160,6 +325,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
     setBlockType('hard');
     setParticipants([]);
     setDuplicateDates([]);
+    setRepeatMode('none');
+    setRepeatUntil('');
   };
 
   const openCreateModal = (start: Date, end: Date) => {
@@ -171,6 +338,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
     setBlockType('hard');
     setParticipants([]);
     setDuplicateDates([]);
+    setRepeatMode('none');
+    setRepeatUntil('');
     setModalError('');
     setModalOpen(true);
   };
@@ -184,6 +353,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
     setBlockType(event.blockType);
     setParticipants([]);
     setDuplicateDates([]);
+    setRepeatMode('none');
+    setRepeatUntil('');
     setModalError('');
     setModalOpen(true);
   };
@@ -202,6 +373,7 @@ export function CalendarPage({ currentUserId, users }: Props) {
 
   const toggleDuplicateDate = (date: string) => {
     if (date === selectedDate) return;
+
     setDuplicateDates((prev) =>
       prev.includes(date) ? prev.filter((d) => d !== date) : [...prev, date]
     );
@@ -217,14 +389,37 @@ export function CalendarPage({ currentUserId, users }: Props) {
       setModalError('');
 
       if (formMode === 'create') {
-        if (duplicateDates.length === 0) {
+        const baseOccurrence = {
+          startAt: new Date(startAt).toISOString(),
+          endAt: new Date(endAt).toISOString(),
+        };
+
+        const duplicateOccurrences = duplicateDates.map((date) => ({
+          startAt: new Date(replaceDatePart(startAt, date)).toISOString(),
+          endAt: new Date(replaceDatePart(endAt, date)).toISOString(),
+        }));
+
+        const repeatedOccurrences = buildRepeatOccurrences({
+          startAtLocal: startAt,
+          endAtLocal: endAt,
+          repeatMode,
+          repeatUntil,
+        });
+
+        const occurrences = dedupeOccurrences([
+          baseOccurrence,
+          ...duplicateOccurrences,
+          ...repeatedOccurrences,
+        ]);
+
+        if (occurrences.length === 1) {
           await api.createEvent({
             creatorId: currentUserId,
             ownerUserId: currentUserId,
             title,
             description: '',
-            startAt: new Date(startAt).toISOString(),
-            endAt: new Date(endAt).toISOString(),
+            startAt: occurrences[0].startAt,
+            endAt: occurrences[0].endAt,
             blockType,
             participants,
           });
@@ -234,17 +429,6 @@ export function CalendarPage({ currentUserId, users }: Props) {
           showToast('Событие создано', 'success');
           return;
         }
-
-        const occurrences = [
-          {
-            startAt: new Date(startAt).toISOString(),
-            endAt: new Date(endAt).toISOString(),
-          },
-          ...duplicateDates.map((date) => ({
-            startAt: new Date(replaceDatePart(startAt, date)).toISOString(),
-            endAt: new Date(replaceDatePart(endAt, date)).toISOString(),
-          })),
-        ];
 
         const result = (await api.createEventsBulk({
           creatorId: currentUserId,
@@ -346,8 +530,15 @@ export function CalendarPage({ currentUserId, users }: Props) {
         }}
       >
         <h2 style={{ margin: 0 }}>Календарь</h2>
-        <button className="icon-filter-button" onClick={() => setFilterModalOpen(true)} title="Фильтр">
-          ⚲
+        <button
+          className="filter-button"
+          onClick={() => setFilterModalOpen(true)}
+          title="Открыть фильтр людей"
+          aria-label="Открыть фильтр людей"
+        >
+          <span>👥</span>
+          <span>Фильтр людей</span>
+          {selectedUserIds.length > 0 && <span className="badge">{selectedUserIds.length}</span>}
         </button>
       </div>
 
@@ -369,16 +560,28 @@ export function CalendarPage({ currentUserId, users }: Props) {
           <strong>{formatSelectedDate(selectedDate)}</strong>
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button onClick={() => setViewMode('day')} className={viewMode === 'day' ? 'view-mode-button active' : 'view-mode-button'}>
+            <button
+              onClick={() => setViewMode('day')}
+              className={viewMode === 'day' ? 'view-mode-button active' : 'view-mode-button'}
+            >
               День
             </button>
-            <button onClick={() => setViewMode('3days')} className={viewMode === '3days' ? 'view-mode-button active' : 'view-mode-button'}>
+            <button
+              onClick={() => setViewMode('3days')}
+              className={viewMode === '3days' ? 'view-mode-button active' : 'view-mode-button'}
+            >
               3 дня
             </button>
-            <button onClick={() => setViewMode('week')} className={viewMode === 'week' ? 'view-mode-button active' : 'view-mode-button'}>
+            <button
+              onClick={() => setViewMode('week')}
+              className={viewMode === 'week' ? 'view-mode-button active' : 'view-mode-button'}
+            >
               Неделя
             </button>
-            <button onClick={() => setViewMode('month')} className={viewMode === 'month' ? 'view-mode-button active' : 'view-mode-button'}>
+            <button
+              onClick={() => setViewMode('month')}
+              className={viewMode === 'month' ? 'view-mode-button active' : 'view-mode-button'}
+            >
               Месяц
             </button>
           </div>
@@ -393,6 +596,16 @@ export function CalendarPage({ currentUserId, users }: Props) {
           >
             + Событие
           </button>
+        </div>
+
+        {viewMode === 'week' && (
+          <div style={{ marginTop: 10, color: 'var(--muted)', fontSize: 13 }}>
+            Неделя показывается с понедельника по воскресенье.
+          </div>
+        )}
+
+        <div style={{ marginTop: 8, color: 'var(--muted)', fontSize: 12 }}>
+          Данные обновляются автоматически примерно раз в 10 секунд.
         </div>
 
         {selectedUserIds.length > 0 && (
@@ -419,25 +632,26 @@ export function CalendarPage({ currentUserId, users }: Props) {
       {loading && <p>Загрузка...</p>}
       {pageError && <p style={{ color: 'var(--danger)' }}>{pageError}</p>}
 
-      {viewMode === 'month' ? (
-        <MonthCalendar
-          selectedDate={selectedDate}
-          selectedUsers={selectedUsers}
-          events={events}
-          getUserColor={getColor}
-          onSelectDate={setSelectedDate}
-        />
-      ) : (
-        <TimeGridCalendar
-          selectedUsers={selectedUsers}
-          events={events}
-          currentUserId={currentUserId}
-          visibleDates={visibleDates}
-          onEmptySlotClick={handleEmptySlotClick}
-          onEventClick={handleEventClick}
-          getUserColor={getColor}
-        />
-      )}
+      {!loading &&
+        (viewMode === 'month' ? (
+          <MonthCalendar
+            selectedDate={selectedDate}
+            selectedUsers={selectedUsers}
+            events={events}
+            getUserColor={getColor}
+            onSelectDate={setSelectedDate}
+          />
+        ) : (
+          <TimeGridCalendar
+            selectedUsers={selectedUsers}
+            events={events}
+            currentUserId={currentUserId}
+            visibleDates={visibleDates}
+            onEmptySlotClick={handleEmptySlotClick}
+            onEventClick={handleEventClick}
+            getUserColor={getColor}
+          />
+        ))}
 
       <EventModal
         open={modalOpen}
@@ -450,6 +664,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
         acceptedUsers={acceptedUserSimple}
         duplicateDates={duplicateDates}
         selectedDate={selectedDate}
+        repeatMode={repeatMode}
+        repeatUntil={repeatUntil}
         error={modalError}
         onClose={closeModal}
         onChangeTitle={setTitle}
@@ -458,6 +674,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
         onChangeBlockType={setBlockType}
         onOpenParticipants={() => setParticipantsModalOpen(true)}
         onToggleDuplicateDate={toggleDuplicateDate}
+        onChangeRepeatMode={setRepeatMode}
+        onChangeRepeatUntil={setRepeatUntil}
         onSubmit={submitForm}
         onDelete={formMode === 'edit' ? deleteCurrentEvent : undefined}
       />

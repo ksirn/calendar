@@ -446,3 +446,55 @@ a {
   border-radius: 50%;
   display: inline-block;
 }
+
+.calendar-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.calendar-inner {
+  min-width: max-content;
+}
+
+.modal-card input,
+.modal-card select,
+.modal-card textarea {
+  max-width: 100%;
+}
+
+.calendar-top-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  height: 16px;
+}
+
+.calendar-top-scroll > div {
+  height: 1px;
+}
+
+.calendar-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.calendar-inner {
+  min-width: max-content;
+}
+
+.filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 10px;
+}
+
+.modal-card input,
+.modal-card select,
+.modal-card textarea {
+  max-width: 100%;
+}
