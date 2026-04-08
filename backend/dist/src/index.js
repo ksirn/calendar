@@ -13,6 +13,7 @@ const connections_1 = __importDefault(require("./routes/connections"));
 const events_1 = __importDefault(require("./routes/events"));
 const invites_1 = __importDefault(require("./routes/invites"));
 const reschedule_1 = __importDefault(require("./routes/reschedule"));
+const todos_1 = __importDefault(require("./routes/todos"));
 const auth_2 = require("./middleware/auth");
 const app = (0, express_1.default)();
 app.use((0, cors_1.default)({
@@ -73,6 +74,7 @@ app.use('/connections', auth_2.authMiddleware, connections_1.default);
 app.use('/events', auth_2.authMiddleware, events_1.default);
 app.use('/invites', auth_2.authMiddleware, invites_1.default);
 app.use('/reschedule', auth_2.authMiddleware, reschedule_1.default);
+app.use('/todos', auth_2.authMiddleware, todos_1.default);
 const PORT = Number(process.env.PORT || 3000);
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

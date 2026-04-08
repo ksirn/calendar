@@ -77,3 +77,16 @@ model RescheduleItem {
   status          String
   createdAt       DateTime @default(now())
 }
+
+model Todo {
+  id            String    @id @default(uuid())
+  creatorId     String
+  ownerUserId   String
+  title         String
+  description   String?
+  deadline      DateTime?
+  status        String    @default("inbox")
+  eventId       String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

@@ -150,4 +150,23 @@ export const api = {
     request(`/reschedule/${itemId}/dismiss?userId=${encodeURIComponent(userId)}`, {
       method: 'POST',
     }),
+
+  getTodos: () => request('/todos'),
+
+  createTodo: (payload: { title: string; description?: string; deadline?: string; targetUserId?: string }) =>
+    request('/todos', { method: 'POST', body: JSON.stringify(payload) }),
+
+  updateTodo: (todoId: string, payload: Record<string, unknown>) =>
+    request(`/todos/${todoId}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+
+  scheduleTodo: (todoId: string, payload: { startAt: string; endAt: string }) =>
+    request(`/todos/${todoId}/schedule`, { method: 'POST', body: JSON.stringify(payload) }),
+
+  deleteTodo: (todoId: string) =>
+    request(`/todos/${todoId}`, { method: 'DELETE' }),
+
+  cancelTodo: (todoId: string) =>
+    request(`/todos/${todoId}/cancel`, { method: 'POST' }),
+
+  getOutgoingInvites: () => request('/invites/outgoing'),
 };

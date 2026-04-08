@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CalendarColumnUser, EventItem } from '../types';
 
 type Props = {
@@ -19,6 +20,10 @@ function toLocalDateKey(dateString: string) {
   return toDateKey(new Date(dateString));
 }
 
+function formatTime(dateString: string) {
+  return new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export function MonthCalendar({
   selectedDate,
   selectedUsers,
@@ -26,6 +31,8 @@ export function MonthCalendar({
   getUserColor,
   onSelectDate,
 }: Props) {
+  const [tooltip, setTooltip] = useState<{ date: string; x: number; y: number } | null>(null);
+
   const cursor = new Date(`${selectedDate}T12:00:00`);
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
@@ -35,7 +42,6 @@ export function MonthCalendar({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
   const cells: Array<string | null> = [];
-
   for (let i = 0; i < startWeekday; i++) cells.push(null);
   for (let day = 1; day <= daysInMonth; day++) {
     cells.push(toDateKey(new Date(year, month, day, 12, 0, 0)));
@@ -43,13 +49,24 @@ export function MonthCalendar({
 
   const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
+  const getEventsForDay = (date: string) =>
+    events
+      .filter(
+        (e) =>
+          e.status !== 'cancelled' &&
+          e.status !== 'needs_reschedule' &&
+          toLocalDateKey(e.startAt) === date &&
+          selectedUsers.some((u) => u.id === e.ownerUserId)
+      )
+      .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime());
+
+  const tooltipEvents = tooltip ? getEventsForDay(tooltip.date) : [];
+
   return (
-    <div className="panel">
+    <div className="panel" style={{ position: 'relative' }}>
       <div className="month-grid weekdays">
         {weekdays.map((w) => (
-          <div key={w} className="month-weekday">
-            {w}
-          </div>
+          <div key={w} className="month-weekday">{w}</div>
         ))}
       </div>
 
@@ -60,6 +77,16 @@ export function MonthCalendar({
               key={date}
               className={`month-cell ${date === selectedDate ? 'active' : ''}`}
               onClick={() => onSelectDate(date)}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const container = e.currentTarget.closest('.panel')!.getBoundingClientRect();
+                setTooltip({
+                  date,
+                  x: rect.left - container.left,
+                  y: rect.bottom - container.top + 4,
+                });
+              }}
+              onMouseLeave={() => setTooltip(null)}
             >
               <div className="month-cell-day">{new Date(`${date}T12:00:00`).getDate()}</div>
 
@@ -92,6 +119,50 @@ export function MonthCalendar({
           )
         )}
       </div>
+
+      {tooltip && tooltipEvents.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: tooltip.x,
+            top: tooltip.y,
+            background: 'var(--panel)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+            padding: '10px 14px',
+            zIndex: 200,
+            minWidth: 210,
+            maxWidth: 300,
+            pointerEvents: 'none',
+            boxShadow: '0 6px 20px rgba(0,0,0,0.22)',
+            fontSize: 12,
+            opacity: 1,
+          }}
+        >
+          {tooltipEvents.map((ev) => {
+            const userIndex = selectedUsers.findIndex((u) => u.id === ev.ownerUserId);
+            const color = getUserColor(ev.ownerUserId, userIndex >= 0 ? userIndex : 0);
+            return (
+              <div key={ev.id} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginBottom: 5 }}>
+                <span
+                  style={{
+                    display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                    background: color, flexShrink: 0, marginTop: 3,
+                  }}
+                />
+                <span>
+                  <span style={{ color: 'var(--muted)', marginRight: 4 }}>
+                    {formatTime(ev.startAt)}–{formatTime(ev.endAt)}
+                  </span>
+                  <span style={{ color: 'var(--text)', fontWeight: 500 }}>
+                    {ev.emoji ? `${ev.emoji} ` : ''}{ev.title}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -56,6 +56,56 @@ async function detectConflict(userId, eventId) {
         conflictEventTitle: null,
     };
 }
+// GET /invites/outgoing — исходящие приглашения (созданные мной события с участниками)
+router.get('/outgoing', async (req, res) => {
+    try {
+        const userId = String(req.user.id);
+        // Все приглашения, которые я отправил
+        const invites = await prisma_1.default.invite.findMany({
+            where: { inviterUserId: userId },
+            orderBy: { createdAt: 'desc' },
+        });
+        const eventIds = [...new Set(invites.map((i) => i.eventId))];
+        const events = eventIds.length
+            ? await prisma_1.default.event.findMany({ where: { id: { in: eventIds } } })
+            : [];
+        const eventMap = new Map(events.map((e) => [e.id, e]));
+        const invitedUserIds = [...new Set(invites.map((i) => i.invitedUserId))];
+        const invitedUsers = invitedUserIds.length
+            ? await prisma_1.default.user.findMany({
+                where: { id: { in: invitedUserIds } },
+                select: { id: true, username: true, name: true, preferredColor: true },
+            })
+            : [];
+        const userMap = new Map(invitedUsers.map((u) => [u.id, u]));
+        // Группируем по событию
+        const byEvent = new Map();
+        for (const invite of invites) {
+            const event = eventMap.get(invite.eventId);
+            if (!event)
+                continue;
+            if (!byEvent.has(invite.eventId)) {
+                byEvent.set(invite.eventId, { event, invites: [] });
+            }
+            byEvent.get(invite.eventId).invites.push(invite);
+        }
+        const result = Array.from(byEvent.values()).map(({ event, invites: eventInvites }) => ({
+            event,
+            invites: eventInvites.map((inv) => ({
+                ...inv,
+                invitedUser: userMap.get(inv.invitedUserId) ?? null,
+            })),
+            allDeclined: eventInvites.every((i) => i.responseStatus === 'declined'),
+            anyAccepted: eventInvites.some((i) => i.responseStatus === 'accepted'),
+            pendingCount: eventInvites.filter((i) => i.responseStatus === 'pending').length,
+        }));
+        return res.json(result);
+    }
+    catch (error) {
+        console.error('GET /invites/outgoing error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
 // GET /invites?userId=...
 router.get('/', async (req, res) => {
     try {

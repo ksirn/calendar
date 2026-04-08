@@ -8,6 +8,7 @@ import connectionsRouter from './routes/connections';
 import eventsRouter from './routes/events';
 import invitesRouter from './routes/invites';
 import rescheduleRouter from './routes/reschedule';
+import todosRouter from './routes/todos';
 import { authMiddleware } from './middleware/auth';
 
 const app = express();
@@ -79,6 +80,7 @@ app.use('/connections', authMiddleware, connectionsRouter);
 app.use('/events', authMiddleware, eventsRouter);
 app.use('/invites', authMiddleware, invitesRouter);
 app.use('/reschedule', authMiddleware, rescheduleRouter);
+app.use('/todos', authMiddleware, todosRouter);
 
 const PORT = Number(process.env.PORT || 3000);
 

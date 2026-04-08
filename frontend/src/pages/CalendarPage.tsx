@@ -168,6 +168,14 @@ export function CalendarPage({ currentUserId, users }: Props) {
     }
   });
   const [selectedDate, setSelectedDate] = useState<string>(() => {
+    // При первом заходе в сессию — всегда сегодня (sessionStorage не заполнен).
+    // После обновления страницы — остаёмся на текущей дате из localStorage.
+    const isNewSession = !sessionStorage.getItem('calendar-session-started');
+    if (isNewSession) {
+      sessionStorage.setItem('calendar-session-started', '1');
+      localStorage.setItem(STORAGE_DATE_KEY, today);
+      return today;
+    }
     return localStorage.getItem(STORAGE_DATE_KEY) || today;
   });
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -256,15 +264,6 @@ export function CalendarPage({ currentUserId, users }: Props) {
   };
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(filterStorageKey);
-      setSelectedUserIds(raw ? JSON.parse(raw) : []);
-    } catch {
-      setSelectedUserIds([]);
-    }
-  }, [filterStorageKey]);
-
-  useEffect(() => {
     load();
     const unsub = subscribeDataChanged(() => load());
     return unsub;
@@ -295,6 +294,8 @@ export function CalendarPage({ currentUserId, users }: Props) {
   );
 
   useEffect(() => {
+    // Только если связи уже загружены (не пустой список при старте)
+    if (acceptedUsers.length === 0) return;
     const allowedIds = new Set(acceptedUsers.map((u) => u!.id));
     setSelectedUserIds((prev) => prev.filter((id) => allowedIds.has(id)));
   }, [acceptedUsers]);

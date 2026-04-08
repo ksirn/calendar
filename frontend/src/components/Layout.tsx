@@ -11,16 +11,18 @@ type Props = {
   invitesCount: number;
   rescheduleCount: number;
   peopleCount: number;
+  todoCount: number;
 };
 
 type NavItem = {
   to: string;
   label: string;
-  badgeKey?: 'invites' | 'reschedule' | 'people';
+  badgeKey?: 'invites' | 'reschedule' | 'people' | 'todo';
 };
 
 const navItems: NavItem[] = [
   { to: '/', label: 'Календарь' },
+  { to: '/todos', label: 'To-do', badgeKey: 'todo' },
   { to: '/invites', label: 'Приглашения', badgeKey: 'invites' },
   { to: '/reschedule', label: 'Перенести', badgeKey: 'reschedule' },
   { to: '/people', label: 'Люди', badgeKey: 'people' },
@@ -35,13 +37,15 @@ export function Layout({
   invitesCount,
   rescheduleCount,
   peopleCount,
+  todoCount,
 }: Props) {
   const location = useLocation();
 
-  const getBadgeValue = (badgeKey?: 'invites' | 'reschedule' | 'people') => {
+  const getBadgeValue = (badgeKey?: 'invites' | 'reschedule' | 'people' | 'todo') => {
     if (badgeKey === 'invites') return invitesCount;
     if (badgeKey === 'reschedule') return rescheduleCount;
     if (badgeKey === 'people') return peopleCount;
+    if (badgeKey === 'todo') return todoCount;
     return 0;
   };
 

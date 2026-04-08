@@ -10,22 +10,17 @@ export function AuthPage({ onAuthSuccess }: Props) {
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async () => {
     try {
       setError('');
-
       if (mode === 'login') {
         await api.login({ username, password });
       } else {
-        await api.register({
-          username,
-          name: name || username,
-          password,
-        });
+        await api.register({ username, name: name || username, password });
       }
-
       onAuthSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка авторизации');
@@ -35,9 +30,7 @@ export function AuthPage({ onAuthSuccess }: Props) {
   return (
     <div style={{ maxWidth: 420, margin: '40px auto', padding: 16 }}>
       <div className="panel">
-        <h2 style={{ marginTop: 0 }}>
-          {mode === 'login' ? 'Вход' : 'Регистрация'}
-        </h2>
+        <h2 style={{ marginTop: 0 }}>{mode === 'login' ? 'Вход' : 'Регистрация'}</h2>
 
         <div style={{ display: 'grid', gap: 10 }}>
           <label>
@@ -46,6 +39,7 @@ export function AuthPage({ onAuthSuccess }: Props) {
               placeholder="например: misha_01"
               value={username}
               onChange={(e) => setUsername(e.target.value.toLowerCase())}
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
             />
           </label>
 
@@ -62,12 +56,28 @@ export function AuthPage({ onAuthSuccess }: Props) {
 
           <label>
             Пароль:
-            <input
-              type="password"
-              placeholder="Не меньше 6 символов"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Не меньше 6 символов"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submit()}
+                style={{ paddingRight: 40, width: '100%', boxSizing: 'border-box' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                style={{
+                  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  color: 'var(--muted)', fontSize: 16, lineHeight: 1,
+                }}
+                title={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+              >
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
           </label>
 
           <div style={{ color: 'var(--muted)', fontSize: 13 }}>
@@ -80,12 +90,7 @@ export function AuthPage({ onAuthSuccess }: Props) {
             <button onClick={submit}>
               {mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
             </button>
-
-            <button
-              onClick={() =>
-                setMode((prev) => (prev === 'login' ? 'register' : 'login'))
-              }
-            >
+            <button onClick={() => setMode((p) => (p === 'login' ? 'register' : 'login'))}>
               {mode === 'login' ? 'Нужна регистрация' : 'Уже есть аккаунт'}
             </button>
           </div>

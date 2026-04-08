@@ -72,3 +72,35 @@ export type CalendarColumnUser = {
   id: string;
   name: string;
 };
+
+export type TodoItem = {
+  id: string;
+  creatorId: string;
+  ownerUserId: string;
+  title: string;
+  description: string | null;
+  deadline: string | null;
+  status: 'inbox' | 'scheduled' | 'done' | 'deleted' | 'cancelled';
+  eventId: string | null;
+  isOverdue: boolean;
+  createdAt: string;
+  updatedAt: string;
+  creator: { id: string; username: string; name: string; preferredColor: string | null } | null;
+};
+
+export type OutgoingTodoItem = TodoItem & {
+  owner: { id: string; username: string; name: string; preferredColor: string | null } | null;
+};
+
+export type OutgoingInviteGroup = {
+  event: EventItem;
+  invites: Array<{
+    id: string;
+    invitedUserId: string;
+    responseStatus: string;
+    invitedUser: { id: string; username: string; name: string; preferredColor: string | null } | null;
+  }>;
+  allDeclined: boolean;
+  anyAccepted: boolean;
+  pendingCount: number;
+};

@@ -7,10 +7,11 @@ import { InvitesPage } from './pages/InvitesPage';
 import { ReschedulePage } from './pages/ReschedulePage';
 import { PeoplePage } from './pages/PeoplePage';
 import { AuthPage } from './pages/AuthPage';
+import { TodoPage } from './pages/TodoPage';
 import { useEffect, useState } from 'react';
 import { api } from './api/client';
 import { subscribeDataChanged } from './lib/dataEvents';
-import type { ConnectionsResponse, InviteItem, RescheduleItem } from './types';
+import type { ConnectionsResponse, InviteItem, RescheduleItem, TodoItem } from './types';
 
 export default function App() {
   const {
@@ -26,23 +27,30 @@ export default function App() {
   const [invitesCount, setInvitesCount] = useState(0);
   const [rescheduleCount, setRescheduleCount] = useState(0);
   const [peopleCount, setPeopleCount] = useState(0);
+  const [todoCount, setTodoCount] = useState(0);
 
   useEffect(() => {
     async function loadBadges() {
       if (!currentUserId) return;
 
       try {
-        const invites = (await api.getInvites(currentUserId)) as InviteItem[];
-        const reschedule = (await api.getReschedule(currentUserId)) as RescheduleItem[];
-        const connections = (await api.getConnections()) as ConnectionsResponse;
+        const [invites, reschedule, connections, todos] = await Promise.all([
+          api.getInvites(currentUserId) as Promise<InviteItem[]>,
+          api.getReschedule(currentUserId) as Promise<RescheduleItem[]>,
+          api.getConnections() as Promise<ConnectionsResponse>,
+          api.getTodos() as Promise<{ inbox: TodoItem[]; outgoing: unknown[] }>,
+        ]);
 
         setInvitesCount(invites.length);
         setRescheduleCount(reschedule.length);
         setPeopleCount(connections.incomingPending.length);
+        // Считаем только активные (inbox, не выполненные)
+        setTodoCount(todos.inbox.filter((t) => t.status === 'inbox').length);
       } catch {
         setInvitesCount(0);
         setRescheduleCount(0);
         setPeopleCount(0);
+        setTodoCount(0);
       }
     }
 
@@ -85,11 +93,13 @@ export default function App() {
       invitesCount={invitesCount}
       rescheduleCount={rescheduleCount}
       peopleCount={peopleCount}
+      todoCount={todoCount}
     >
       <Routes>
         <Route path="/" element={<CalendarPage currentUserId={currentUserId} users={users} />} />
         <Route path="/invites" element={<InvitesPage currentUserId={currentUserId} />} />
         <Route path="/reschedule" element={<ReschedulePage currentUserId={currentUserId} />} />
+        <Route path="/todos" element={<TodoPage currentUserId={currentUserId} />} />
         <Route
           path="/people"
           element={<PeoplePage currentUserId={currentUserId} users={users} />}
